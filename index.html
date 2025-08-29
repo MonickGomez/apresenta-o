@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apresentação Downstream</title>
+    <!-- Tailwind CSS para design minimalista -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js para os gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Plugin para adicionar labels aos gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <!-- Biblioteca para exportar para PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            overflow: hidden; /* Evita a rolagem */
+        }
+        .slide {
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #f3f4f6;
+            color: #1f2937;
+            padding: 2rem;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease-in-out;
+        }
+        .slide.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .chart-container {
+            width: 80%;
+            max-width: 800px;
+            height: 400px;
+            margin-top: 2rem;
+        }
+        .card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 2rem;
+        }
+        .arrow {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 2rem;
+            color: #6b7280;
+            cursor: pointer;
+            user-select: none;
+            z-index: 10;
+        }
+        .left-arrow { left: 2rem; }
+        .right-arrow { right: 2rem; }
+        
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Slides -->
+    <div id="slides-container">
+        <!-- Slide 1: Título -->
+        <div class="slide active">
+            <h1 class="text-5xl font-bold mb-4">Downstream</h1>
+            <p class="text-2xl text-gray-600">Apresentação de Análise de Sprint</p>
+            <p class="text-xl text-gray-500 mt-4">25/08/2025 - 29/08/2025</p>
+            <button onclick="exportAllSlidesToPdf()" class="mt-8 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition duration-200">
+                Baixar Apresentação
+            </button>
+        </div>
+
+        <!-- Slide 2: Visão Geral da Sprint -->
+        <div class="slide">
+            <h2 class="text-3xl font-bold mb-4">Visão Geral da Sprint</h2>
+            <div class="w-full max-w-4xl overflow-x-auto card">
+                <table class="min-w-full divide-y divide-gray-200" id="slide-table">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tags</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <!-- Itens serão injetados aqui via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Slide 3: Itens por Tipo -->
+        <div class="slide">
+            <h2 class="text-3xl font-bold">Análise de Tipos de Itens</h2>
+            <p class="text-md text-gray-500">Compara a quantidade de bugs, tarefas (tasks) e funcionalidades (features) na sprint.</p>
+            <div class="chart-container">
+                <canvas id="item-type-chart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Slide 4: Status por Tipo -->
+        <div class="slide">
+            <h2 class="text-3xl font-bold">Status por Tipo</h2>
+            <p class="text-md text-gray-500">Mostra a distribuição de bugs, tasks e features em cada status do ciclo de vida.</p>
+            <div class="chart-container">
+                <canvas id="status-by-type-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Slide 5: Burndown Chart -->
+        <div class="slide">
+            <h2 class="text-3xl font-bold">Burndown Chart</h2>
+            <p class="text-md text-gray-500">Acompanha o trabalho restante ao longo do tempo. Ajuda a prever se a sprint está no prazo.</p>
+            <div class="chart-container">
+                <canvas id="burndown-chart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Navigation Arrows -->
+    <span class="arrow left-arrow" onclick="prevSlide()">&#10094;</span>
+    <span class="arrow right-arrow" onclick="nextSlide()">&#10095;</span>
+
+    <script>
+        // Dados pré-carregados
+        const sprintItems = [
+            { id: crypto.randomUUID(), name: 'Retirar 2 resultados de NPS erroneos', tags: ['task'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-25T10:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Bug na sincronização de telefones da meta', tags: ['bug'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-25T11:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Mensagens de disparos para clientes inadimplentes', tags: ['bug'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-25T12:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Instabilidade PA', tags: ['bug'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-25T13:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Remover envios testes', tags: ['task'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-25T14:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Atualizar a data do pós atendimentotask', tags: ['task'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-25T15:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Conflito no envio da mensagem', tags: ['bug'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-25T16:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Erro no analisador de chamados', tags: ['bug'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-25T17:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Criar opção de selecionar campo de contato no integrador do Voalle', tags: ['feature'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-26T09:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Configuração do domíniotask', tags: ['task'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-26T10:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Alterar tempo de envio', tags: ['task'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-26T11:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Alterar tempo de envio NPS', tags: ['task'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-26T12:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Ajuste da pergunta de resolutividade', tags: ['task'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-26T13:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Adicionar coringa para o número do lead', tags: ['task'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-26T14:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Planilha de não enviadas', tags: ['task'], status: 'Produção', statusHistory: [{ status: 'Produção', timestamp: new Date('2025-08-26T15:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Problema no menu de envio do PA', tags: ['bug'], status: 'Pronto pra produção', statusHistory: [{ status: 'Pronto pra produção', timestamp: new Date('2025-08-27T09:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Ajuste nos modelos de resposta automática da Meta', tags: ['bug'], status: 'Teste cruzado', statusHistory: [{ status: 'Teste cruzado', timestamp: new Date('2025-08-27T10:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Inserir script da ferramenta de pop-up na plataforma', tags: ['task'], status: 'Teste cruzado', statusHistory: [{ status: 'Teste cruzado', timestamp: new Date('2025-08-27T11:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Adicionar botão de verificar número', tags: ['task'], status: 'Teste cruzado', statusHistory: [{ status: 'Teste cruzado', timestamp: new Date('2025-08-27T12:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Landing page - Tela simples de Convite com Formulário', tags: ['feature'], status: 'Desenvolvimento', statusHistory: [{ status: 'Desenvolvimento', timestamp: new Date('2025-08-27T13:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Landing Page Segmentada com Múltiplas Etapas', tags: ['feature'], status: 'Desenvolvimento', statusHistory: [{ status: 'Desenvolvimento', timestamp: new Date('2025-08-27T14:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'envio NPS', tags: ['task'], status: 'Refinamento', statusHistory: [{ status: 'Refinamento', timestamp: new Date('2025-08-28T09:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Edição de nota para pesquisa sem resolutividade', tags: ['task'], status: 'Refinamento', statusHistory: [{ status: 'Refinamento', timestamp: new Date('2025-08-28T10:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Relatórios de pesquisas personalizadas', tags: ['task'], status: 'Refinamento', statusHistory: [{ status: 'Refinamento', timestamp: new Date('2025-08-28T11:00:00Z') }] },
+            { id: crypto.randomUUID(), name: 'Ativar conexa no Zapisp', tags: ['task'], status: 'Refinamento', statusHistory: [{ status: 'Refinamento', timestamp: new Date('2025-08-28T12:00:00Z') }] }
+        ];
+
+        let currentSlideIndex = 0;
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+
+        let itemTypeChartInstance;
+        let statusByTypeChartInstance;
+        let burndownChartInstance;
+        
+        // Register the datalabels plugin
+        Chart.register(ChartDataLabels);
+
+        function showSlide(index) {
+            slides.forEach((slide, i) => {
+                if (i === index) {
+                    slide.classList.add('active');
+                } else {
+                    slide.classList.remove('active');
+                }
+            });
+            updateCharts(index);
+        }
+
+        function nextSlide() {
+            currentSlideIndex = (currentSlideIndex + 1) % totalSlides;
+            showSlide(currentSlideIndex);
+        }
+
+        function prevSlide() {
+            currentSlideIndex = (currentSlideIndex - 1 + totalSlides) % totalSlides;
+            showSlide(currentSlideIndex);
+        }
+        
+        function renderTable() {
+            const tableBody = document.querySelector('#slide-table tbody');
+            tableBody.innerHTML = '';
+            sprintItems.forEach(item => {
+                const row = document.createElement('tr');
+                let statusColorClass = '';
+                switch(item.status) {
+                    case 'Produção': statusColorClass = 'bg-indigo-100 text-indigo-800'; break;
+                    case 'Pronto pra produção': statusColorClass = 'bg-red-100 text-red-800'; break;
+                    case 'Teste cruzado': statusColorClass = 'bg-teal-100 text-teal-800'; break;
+                    case 'Desenvolvimento': statusColorClass = 'bg-orange-100 text-orange-800'; break;
+                    case 'Refinamento': statusColorClass = 'bg-gray-200 text-gray-800'; break;
+                    case 'Concluído': statusColorClass = 'bg-green-100 text-green-800'; break;
+                    case 'Em Progresso': statusColorClass = 'bg-yellow-100 text-yellow-800'; break;
+                    case 'Em Revisão': statusColorClass = 'bg-purple-100 text-purple-800'; break;
+                    case 'To Do': statusColorClass = 'bg-blue-100 text-blue-800'; break;
+                }
+
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${item.tags.map(tag => `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">${tag}</span>`).join(' ')}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span class="status-badge ${statusColorClass}">
+                            ${item.status}
+                        </span>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        function createItemTypeChart() {
+            if (itemTypeChartInstance) { itemTypeChartInstance.destroy(); }
+
+            const typeCounts = { 'bug': 0, 'task': 0, 'feature': 0 };
+            sprintItems.forEach(item => {
+                if (item.tags.includes('bug')) typeCounts['bug']++;
+                if (item.tags.includes('task')) typeCounts['task']++;
+                if (item.tags.includes('feature')) typeCounts['feature']++;
+            });
+            
+            const ctx = document.getElementById('item-type-chart').getContext('2d');
+            itemTypeChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Bugs', 'Tasks', 'Features'],
+                    datasets: [{
+                        label: 'Quantidade',
+                        data: [typeCounts.bug, typeCounts.task, typeCounts.feature],
+                        backgroundColor: ['#EF4444', '#3B82F6', '#10B981'],
+                        borderColor: ['#B91C1C', '#2563EB', '#059669'],
+                        borderWidth: 1,
+                        datalabels: { color: '#333' }
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { tooltip: { callbacks: { label: (ctx) => `Quantidade: ${ctx.parsed.y}` } } }
+                }
+            });
+        }
+        
+        function createStatusByTypeChart() {
+            if (statusByTypeChartInstance) { statusByTypeChartInstance.destroy(); }
+
+            const itemTypes = ['bug', 'task', 'feature'];
+            const statuses = ['Produção', 'Pronto pra produção', 'Teste cruzado', 'Desenvolvimento', 'Refinamento', 'Concluído', 'Em Revisão', 'Em Progresso', 'To Do'];
+            
+            const dataSets = statuses.map(status => {
+                const data = itemTypes.map(type => {
+                    return sprintItems.filter(item => item.tags.includes(type) && item.status === status).length;
+                });
+                let color;
+                switch(status) {
+                    case 'Produção': color = '#A5B4FC'; break;
+                    case 'Pronto pra produção': color = '#FCA5A5'; break;
+                    case 'Teste cruzado': color = '#6EE7B7'; break;
+                    case 'Desenvolvimento': color = '#FDBA74'; break;
+                    case 'Refinamento': color = '#E5E7EB'; break;
+                    case 'Concluído': color = '#4ADE80'; break;
+                    case 'Em Revisão': color = '#A78BFA'; break;
+                    case 'Em Progresso': color = '#FACC15'; break;
+                    case 'To Do': color = '#60A5FA'; break;
+                }
+                return {
+                    label: status,
+                    data: data,
+                    backgroundColor: color,
+                    datalabels: { color: '#fff', formatter: (value) => value > 0 ? value : '' }
+                };
+            });
+
+            const ctx = document.getElementById('status-by-type-chart').getContext('2d');
+            statusByTypeChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: ['Bugs', 'Tasks', 'Features'], datasets: dataSets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+                    plugins: { tooltip: { mode: 'index', intersect: false } }
+                }
+            });
+        }
+        
+        function createBurndownChart() {
+            if (burndownChartInstance) { burndownChartInstance.destroy(); }
+            
+            const startDate = new Date('2025-08-25');
+            const endDate = new Date('2025-08-29');
+            const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+            
+            const labels = [];
+            const remainingData = [];
+
+            for (let i = 0; i <= daysDiff; i++) {
+                const currentDate = new Date(startDate);
+                currentDate.setDate(startDate.getDate() + i);
+                labels.push(currentDate.toLocaleDateString('pt-BR'));
+                
+                let remainingItems = 0;
+                sprintItems.forEach(item => {
+                    const lastStatusEntry = item.statusHistory.findLast(history => history.timestamp <= currentDate);
+                    if (lastStatusEntry && lastStatusEntry.status !== 'Done' && lastStatusEntry.status !== 'Concluído') {
+                        remainingItems++;
+                    }
+                });
+                remainingData.push(remainingItems);
+            }
+            
+            const ctx = document.getElementById('burndown-chart').getContext('2d');
+            burndownChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Itens Restantes',
+                            data: remainingData,
+                            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            tension: 0.3,
+                            datalabels: { color: 'rgba(59, 130, 246, 1)' }
+                        }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+        
+        function updateCharts(slideIndex) {
+            switch(slideIndex) {
+                case 2: createItemTypeChart(); break;
+                case 3: createStatusByTypeChart(); break;
+                case 4: createBurndownChart(); break;
+            }
+        }
+
+        async function exportAllSlidesToPdf() {
+            const loadingMessage = document.createElement('div');
+            loadingMessage.innerText = 'Gerando PDF... Por favor, aguarde.';
+            loadingMessage.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background-color: #1f2937;
+                color: white;
+                padding: 1rem 2rem;
+                border-radius: 0.5rem;
+                z-index: 1000;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            `;
+            document.body.appendChild(loadingMessage);
+
+            const doc = new jspdf.jsPDF('landscape', 'px', 'a4');
+            const slideElements = document.querySelectorAll('.slide');
+            const initialSlideIndex = currentSlideIndex;
+
+            for (let i = 0; i < slideElements.length; i++) {
+                const slide = slideElements[i];
+                showSlide(i);
+                
+                // Wait for charts to render
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                const canvas = await html2canvas(slide, {
+                    scale: 2, // Aumenta a resolução para um PDF de melhor qualidade
+                    logging: false,
+                    useCORS: true
+                });
+
+                const imgData = canvas.toDataURL('image/png');
+                const imgProps = doc.getImageProperties(imgData);
+                const pdfWidth = doc.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                if (i > 0) {
+                    doc.addPage();
+                }
+                doc.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            }
+            
+            doc.save('Apresentacao_Downstream.pdf');
+            document.body.removeChild(loadingMessage);
+            showSlide(initialSlideIndex); // Retorna para o slide inicial
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') {
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                prevSlide();
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderTable();
+            showSlide(currentSlideIndex);
+        });
+    </script>
+</body>
+</html>
